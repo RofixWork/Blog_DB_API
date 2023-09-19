@@ -16,7 +16,7 @@ builder.Services.AddControllers().AddNewtonsoftJson();
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
-builder.Services.AddDefaultIdentity<IdentityUser>().AddEntityFrameworkStores<AppDbContext>();
+builder.Services.AddIdentity<IdentityUser, IdentityRole>().AddEntityFrameworkStores<AppDbContext>();
 builder.Services.AddDbContext<AppDbContext>(options =>
 {
     options.UseSqlServer(builder.Configuration.GetConnectionString("BaseConnection")).LogTo(Console.WriteLine, LogLevel.Information);
@@ -45,6 +45,10 @@ builder.Services.AddAuthentication(options =>
     };
 });
 
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("DepartmentPolicy", policy => policy.RequireClaim("department"));
+});
 
 
 var app = builder.Build();

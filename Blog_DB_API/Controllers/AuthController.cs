@@ -18,14 +18,16 @@ namespace Blog_DB_API.Controllers
     public class AuthController : ControllerBase
     {
         private readonly UserManager<IdentityUser> _userManager;
+        private readonly RoleManager<IdentityRole> _roleManager;
         private readonly IConfiguration _configuration;
         private readonly IEmailSender _emailSender;
 
-        public AuthController(UserManager<IdentityUser> userManager, IConfiguration configuration, IEmailSender emailSender)
+        public AuthController(UserManager<IdentityUser> userManager, IConfiguration configuration, IEmailSender emailSender, RoleManager<IdentityRole> roleManager)
         {
             _userManager = userManager;
             _configuration = configuration;
             _emailSender = emailSender;
+            _roleManager = roleManager;
         }
 
         //register
@@ -60,7 +62,7 @@ namespace Blog_DB_API.Controllers
             var createUser = await _userManager.CreateAsync(newUser);
 
             if (!createUser.Succeeded) return BadRequest(Responses.BadRequestResponse("Server Error"));
-
+            await _userManager.AddToRoleAsync(newUser, "user");
             var token = await _userManager.GenerateEmailConfirmationTokenAsync(newUser);
             var confirmationLink = Url.Action(nameof(ConfirmEmail), "Auth", new { token, email = newUser.Email }, Request.Scheme);
             var message = new Message(new string[] {newUser.Email!}, "Confirmation email link", confirmationLink);
@@ -72,7 +74,7 @@ namespace Blog_DB_API.Controllers
         //confirm email
         [HttpGet("ConfirmEmail")]
         [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+        [ProducesResponseType(StatusCodes.Status500InternalServerError)] 
         public async Task<IActionResult> ConfirmEmail(string token, string email)
         {
             var user = await _userManager.FindByEmailAsync(email);
@@ -115,22 +117,42 @@ namespace Blog_DB_API.Controllers
 
             if(!checkPassword) return BadRequest(Responses.BadRequestResponse("Invalid Email or Password..."));
 
-            var token = GenerateToken(user);
+            var token = await GenerateToken(user);
             return Ok(new { status = StatusCodes.Status200OK, token });
         }
 
+        private async Task<List<Claim>> GetClaims(IdentityUser user)
+        {
+            var claims = new List<Claim>
+            {
+                new Claim("Id", user.Id),
+                new Claim(JwtRegisteredClaimNames.Email, user.Email!),
+                new Claim(JwtRegisteredClaimNames.Sub, user.Email!),
+                new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
+            };
+
+            //get claims
+            var userClaims = await _userManager.GetClaimsAsync(user);
+            claims.AddRange(userClaims);
+
+            //get user roles
+            var userRoles = await _userManager.GetRolesAsync(user);
+            foreach (var userRole in userRoles)
+            {
+                claims.Add(new Claim(ClaimTypes.Role, userRole));
+            }
+            return claims;
+        }
+
         //generate token
-        private string GenerateToken(IdentityUser user)
+        private async Task<string> GenerateToken(IdentityUser user)
         {
             var key = Encoding.UTF8.GetBytes(_configuration.GetSection("JwtConfig:Token").Value!);
+            var claims = await GetClaims(user);
             var jwtTokenHandler = new JwtSecurityTokenHandler();
             var jwtTokenDescriptor = new SecurityTokenDescriptor()
             {
-                Subject = new ClaimsIdentity(new[]
-                {
-                    new Claim("Id", user.Id),
-                    new Claim(ClaimTypes.Email, user.Email!),
-                }),
+                Subject = new ClaimsIdentity(claims),
                 Expires = DateTime.UtcNow.AddDays(1),
                 SigningCredentials = new(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature)
             };
