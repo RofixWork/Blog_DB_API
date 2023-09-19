@@ -12,7 +12,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace Blog_DB_API.Controllers
 {
     [Route("api/[controller]")]
-    [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
+    [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Roles = "user, admin")]
     //[ApiController]
     public class PostController : ControllerBase
     {
@@ -26,6 +26,7 @@ namespace Blog_DB_API.Controllers
         //get posts
         [HttpGet(Name = "GetPosts")]
         [ProducesResponseType(StatusCodes.Status200OK)]
+        [Authorize(Policy = "DepartmentPolicy")]
         public async Task<ActionResult<IEnumerable<Post>>> GetPosts()
         {
             var posts = await _postRepository.FindAll(e => e.PublicationDate);
